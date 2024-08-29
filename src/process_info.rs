@@ -1,35 +1,36 @@
 use std::{fs::File, io::{self, Read}, path::Path};
 
 pub struct ProcessInfo {
-    pub pid: usize,
+    pub pid: i32,
     pub comm: String,
     pub maps: Vec<MemoryMap>,
 }
 
-struct MemoryMap {
-    start: usize,
-    end: usize,
-    perms: String,
-    path: String,
+pub struct MemoryMap {
+    pub start: usize,
+    pub end: usize,
+    pub perms: String,
+    pub path: String,
 }
 
 pub fn get_process_info(pid_str: &String) -> io::Result<ProcessInfo> {
-    let pid: usize = pid_str
-        .parse()
+    let pid: i32 = pid_str.parse()
         .expect("Please provide a valid PID");
-    if !Path::new(&format!("/proc/{}", pid)).exists() {
+    
+    if !Path::new(&format!("/proc/{}", pid_str)).exists() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
             format!("No process with PID {}", pid),
         ));
     }
+    
     let comm = get_comm(pid)?;
     let maps = get_maps(pid)?;
 
     Ok(ProcessInfo { pid, comm, maps })
 }
 
-fn get_comm(pid: usize) -> io::Result<String> {
+fn get_comm(pid: i32) -> io::Result<String> {
     let path = format!("/proc/{}/comm", pid);
     let mut file = File::open(path)?;
     let mut comm_str = String::new();
@@ -39,7 +40,7 @@ fn get_comm(pid: usize) -> io::Result<String> {
     Ok(comm_str.trim().to_string())
 }
 
-fn get_maps(pid: usize) -> io::Result<Vec<MemoryMap>> {
+fn get_maps(pid: i32) -> io::Result<Vec<MemoryMap>> {
     let mut maps = Vec::new();
     
     let path = format!("/proc/{}/maps", pid);
@@ -69,4 +70,16 @@ fn get_maps(pid: usize) -> io::Result<Vec<MemoryMap>> {
     }
 
     Ok(maps)
+}
+
+impl std::fmt::Display for MemoryMap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:016x}-{:016x} {} {}", self.start, self.end, self.perms, self.path)
+    }
+}
+
+pub fn print_maps(proc_info: &ProcessInfo) {
+    for map in &proc_info.maps {
+        println!("{map}");
+    }
 }

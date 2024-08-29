@@ -1,7 +1,6 @@
 use std::{env, io::{self, Write}, process};
 
-use process_info::ProcessInfo;
-
+mod memory;
 mod process_info;
 
 fn main() {
@@ -15,28 +14,67 @@ fn main() {
     let proc_info = process_info::get_process_info(&args[1])
         .expect("Failed to get process info");
 
+    let mut examine = memory::Examine::new(1000);
+
     loop {
-        println!("Examining {}({})...", proc_info.comm, proc_info.pid);
-        print!("Address: ");
+        println!("Enter command to examine {}({})...", proc_info.comm, proc_info.pid);
+        println!("Commands: examine, maps, searchval, searchpat, settimeout, clear, quit");
+        
+        print!("> ");
         io::stdout().flush().unwrap();
 
-        let mut address = String::new();
-        let address = match io::stdin().read_line(&mut address) {
-            Ok(_) => parse_address(&address.trim(), &proc_info),
+        let mut command_str = String::new();
+        let command_args = match io::stdin().read_line(&mut command_str) {
+            Ok(_) => command_str.trim()
+                .split_ascii_whitespace()
+                .collect::<Vec<&str>>(),
             Err(error) => {
-                eprintln!("Failed to read address: {error}");
+                eprintln!("Failed to read command: {error}");
                 continue;
             }
         };
-    }
-}
 
-fn parse_address(address: &str, proc: &ProcessInfo) -> usize {
-    if address.starts_with("0x") {
-        usize::from_str_radix(&address[2..], 16)
-            .expect("Please provide a valid address")
-    } else {
-        address.parse()
-            .expect("Please provide a valid address")
+        if command_args.is_empty() {
+            continue;
+        }
+
+        match command_args[0] {
+            "examine" => {
+                if let Some(&address) = command_args.get(1) {
+                    let address = match memory::parse_address(address, &proc_info) {
+                        Ok(address) => address,
+                        Err(error) => {
+                            eprintln!("{error}");
+                            continue;
+                        }
+                    };
+                    examine.examine(&proc_info, Some(address));
+                } else {
+                    examine.examine(&proc_info, None);
+                }
+            },
+            "settimeout" => {
+                if let Some(&timeout) = command_args.get(1) {
+                    let timeout = match timeout.parse::<u16>() {
+                        Ok(timeout) => timeout,
+                        Err(error) => {
+                            eprintln!("Failed to parse timeout: {error}");
+                            continue;
+                        }
+                    };
+                    examine.set_timeout(timeout);
+                    println!("Timeout set to {} ms", timeout);
+                } else {
+                    eprintln!("Usage: settimeout <timeout>");
+                }
+            },
+            "clear" => {
+                print!("\x1b[H\x1b[J");
+                io::stdout().flush().unwrap();
+            },
+            "maps" => process_info::print_maps(&proc_info),
+            "quit" => break,
+            cmd => eprintln!("Unknown command: {}", cmd),
+        }
     }
 }
